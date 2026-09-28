@@ -211,3 +211,63 @@ body {
    height: 2rem;
    width: 2rem;
 }
+
+/* ---- 单队指令优化器面板（labOptimizer.js 注入） ---- */
+#optimPanel {
+   position: fixed;
+   left: 50%;
+   transform: translateX(-50%);
+   bottom: 0;
+   width: min(46rem, 96vw);
+   max-height: 60vh;
+   overflow-y: auto;
+   background: rgba(20, 20, 24, 0.97);
+   border: 1px solid #444;
+   border-bottom: none;
+   border-radius: 0.4rem 0.4rem 0 0;
+   color: #eee;
+   font-size: 0.85rem;
+   padding: 0.5rem 0.7rem;
+   z-index: 60;
+}
+.optim-row {
+   display: flex;
+   align-items: center;
+   flex-wrap: wrap;
+   gap: 0.5rem;
+   margin: 0.3rem 0;
+}
+.optim-label { opacity: 0.8; }
+.optim-btn {
+   border: none;
+   border-radius: 0.25rem;
+   padding: 0.3rem 0.8rem;
+   cursor: pointer;
+   background: #2c6e49;
+   color: white;
+   font-size: 0.85rem;
+}
+.optim-btn:disabled { background: #555; color: #999; cursor: default; }
+.optim-status {
+   display: flex;
+   flex-wrap: wrap;
+   gap: 0.8rem;
+   margin: 0.3rem 0;
+   padding: 0.3rem 0.4rem;
+   background: rgba(255, 255, 255, 0.06);
+   border-radius: 0.25rem;
+   min-height: 1.3rem;
+}
+#optimBest { color: #ffd166; font-weight: bold; }
+.optim-log {
+   height: 9rem;
+   overflow-y: auto;
+   background: black;
+   border: 1px solid #333;
+   border-radius: 0.25rem;
+   padding: 0.3rem 0.4rem;
+   font-family: Consolas, monospace;
+   font-size: 0.72rem;
+   white-space: pre-wrap;
+   word-break: break-all;
+}
