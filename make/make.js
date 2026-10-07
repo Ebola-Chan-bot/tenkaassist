@@ -419,8 +419,13 @@ function setPossible() {
 
 const e9 = 1000000000;
 let maxHeap, curCalc;
+// The rung the last successful N-deck render showed (makeBlock decrements curCalc past the rung it filtered on, so the rendered rung is curCalc+1). Used to remember where the user was looking when a ban started, so the unban returns there instead of inheriting the ban period's auto-descended rung.
+let lastRung = -1, preBanRung = -1;
+// Keys of the pool the current N-deck enumeration filtered in; the ELV landing check compares the not-in-pool teams against the view's threshold to catch teams whose value was still a fit13t fallback at enumeration time.
+let poolKeys = null;
 function makeBlock() {
    renderGen++;   // this flow takes over the container: any earlier chunked search must stop touching it
+   essRebuildPending = false;   // whatever rebuilds here re-filters with the current required/excluded sets, so a deferred ess edit is satisfied by this run
    page = 0;
    bundleCnt = 0;
    maxHeap = new MaxHeap();
@@ -487,6 +492,7 @@ function makeBlock() {
       }
 
       backtrackCounter = possible.length;
+      poolKeys = new Set(possible.map(p => p.compstr.join(' ')));
       cc.innerHTML = `<div class="block">${t("계산중")}...0.00%</div>`;
       if (possible.length < deckCnt) {
          if (limit_fit < 0 && curCalc >= 0) makeBlock();
@@ -525,17 +531,32 @@ document.addEventListener("DOMContentLoaded", function() {
    document.getElementById(`essBox`).innerHTML = stringArr.join("");
 });
 let isEssOn = false, essSave = new Set(), exSave = new Set();
+// A required/excluded edit confirmed while an N-deck search owns the container cannot rebuild right away (onOffEss defers it into this flag); the search's settle points call flushEssRebuild so an unban never leaves the banned teams on screen.
+let essRebuildPending = false;
 function onOffEss() {
-   if (isCalculating) return;
    document.getElementById("dropdown-content").style.display = "none";
-   if (!isEssOn) setEss(true);
-   else {
-      setEss(false);
-      if (isSameSet(essSave, essSet) && isSameSet(exSave, exSet)) return;
-      curCalc = Math.floor(maxCur13t/e9);
-      makeBlock();
-      essSave = new Set(essSet); exSave = new Set(exSet);
-   }
+   if (!isEssOn) { setEss(true); return; }
+   setEss(false);
+   const unchanged = isSameSet(essSave, essSet) && isSameSet(exSave, exSet);
+   essSave = new Set(essSet); exSave = new Set(exSet);
+   if (unchanged) return;
+   applyRungMemory();
+   if (isCalculating) { essRebuildPending = true; return; }   // a running search owns the container: remember the edit instead of silently dropping the rebuild
+   nDeckRerankPending = true;   // the rebuild filters by teamVal, whose ELV part may still be a fit13t fallback for teams the search has not reached; the landing check re-enumerates once they qualify
+   makeBlock();
+}
+function flushEssRebuild() {
+   if (!essRebuildPending || isCalculating) return;
+   essRebuildPending = false;
+   applyRungMemory();
+   nDeckRerankPending = true;   // same fallback-value compensation as the direct path above
+   makeBlock();
+}
+// Ban/unban must not move the user's threshold rung: the first ban remembers the rung on screen, the unban (no exclusions left) returns to it. Without this the unban inherits the ban period's auto-descended rung, whose much bigger pool makes the rebuild crawl and shows a different slice than the user had.
+function applyRungMemory() {
+   if (limit_fit >= 0) return;
+   if (exSet.size && preBanRung < 0 && lastRung > 0) preBanRung = lastRung;
+   else if (!exSet.size && preBanRung > 0) { curCalc = preBanRung; preBanRung = -1; }
 }
 function isSameSet(setA, setB) {
    if (setA.size !== setB.size) return false;
@@ -577,13 +598,28 @@ function nDeckRerankOnce() {
    if (nDeckRerankTimer) return;
    nDeckRerankTimer = setTimeout(() => {
       nDeckRerankTimer = 0;
-      if (mod == 0 || !ELVUI.isOn() || ELVUI.active) return;
-      curCalc++;   // the auto-threshold branch decrements on every pass; cancel it so the re-rank keeps the threshold the user is looking at
+      if (mod == 0 || !ELVUI.isOn() || ELVUI.active || isCalculating) return;
+      // makeBlock re-enumerates the pool at the rung given to it. When a landed ELV value pulled a team over the view's threshold (its value was still a fit13t fallback at enumeration time — a just-unbanned strong team, typically) re-run at the rung on screen so the team enters the bundles; otherwise this is the plain once-per-view re-rank at the same rung.
+      curCalc = nDeckCrossPending && lastRung > 0 ? lastRung : curCalc + 1;
+      nDeckCrossPending = false;
       makeBlock();
    }, 1500);
 }
+// A landed ELV value crossed the current view's threshold for a team the last enumeration could not see (values rise monotonically, so each team crosses at most once — the trigger is naturally bounded). Coalesced by the rerank debounce above.
+let nDeckCrossPending = false;
+function nDeckCrossing() {
+   if (mod == 0 || typeof ELVUI === 'undefined' || !ELVUI.isOn() || ELVUI.active || isCalculating || !poolKeys) return false;
+   const 线 = limit_fit > 0 ? limit_fit : (lastRung > 0 ? lastRung * e9 : -1);
+   if (线 < 0 || typeof possibleCopy === 'undefined' || !possibleCopy) return false;
+   for (const pc of possibleCopy) {
+      const k = pc.compstr.join(' ');
+      if (poolKeys.has(k)) continue;
+      if ((teamVal(pc) || 0) >= 线) return true;
+   }
+   return false;
+}
 if (typeof ELVUI !== 'undefined') {
-   ELVUI.onSearchUpdate = nDeckRerankOnce;
+   ELVUI.onSearchUpdate = () => { if (nDeckCrossing()) { nDeckCrossPending = true; nDeckRerankPending = true; } nDeckRerankOnce(); };
    ELVUI.onViewChange = () => { nDeckRerankPending = true; };
 }
 
@@ -698,6 +734,7 @@ function compUrl(id, compstr) {
 }
 
 function makeBlockNDeck() {
+   lastRung = curCalc + 1;   // this render shows the rung makeBlock filtered on, one above the already-decremented curCalc
    loadBlockNDeck();
    isCalculating = false;
 }
@@ -792,6 +829,7 @@ function backtrack0(backtrackIdx, gen) {
          } else {
             cc.innerHTML = `<div class="block">${t("검색결과 없음")}</div>`;
             isCalculating = false;
+            flushEssRebuild();
          }
          return;
       } else if (limit_fit < 0 && curCalc > 0) {
@@ -803,6 +841,7 @@ function backtrack0(backtrackIdx, gen) {
       }
       maxHeapSize = maxHeap.size();
       makeBlockNDeck();
+      flushEssRebuild();   // the search just released the container: honor a required/excluded edit that arrived while it was running
    }
    else setTimeout(() => backtrack0(backtrackIdx + 1, gen), 16);
 }
@@ -953,7 +992,7 @@ function getTopCombinationsByPage(itemsPerPage = 10) {
       for (let i = 0; i < itemsPerPage; i++) result.push(maxHeap.pop());
 
       return result;
-   };
+   }
 }
 
 const getNDeckPage = getTopCombinationsByPage(10);
