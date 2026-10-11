@@ -274,8 +274,9 @@ const noti_txt = [
     [`24/07/30`, `최대데미지 한계를 적용 (2^31-1) + 오버플로 시 빨간색 데미지 표기`],
 ];
 
+// 名字/术语查表：返回值已经是阅读者当前语言的译名，不需要翻译屏蔽。原来的 translate="no" span 嵌在韩文句子内部把句子毒化了：浏览器翻译器按句子范围提取一个翻译单元，无法在译文里给不可翻译的岛屿留洞回填，于是整个单元被静默跳过——这就是韩文始终没被翻译的原因。
 function n(txt) {
-    return `<span translate="no"> ${t(txt)} </span>`
+    return ` ${t(txt)} `
 }
 
 document.addEventListener("DOMContentLoaded", function() {
@@ -324,7 +325,8 @@ function makeTxtBox(ym = "24/07", list, isOpen = false) {
     const res = [];
     
     for(let i = 0; i < list.length; i++) {
-        res.push(list[i][0] + " " + list[i][1] + (i != (list.length-1) ? "<hr>" : ""));
+        // 每条提醒都是独立的带语种标注的块级元素：翻译器（和选中工具）按块级单元工作，条目不会合并成一大段混合文本，每句韩文都能被单独选中和翻译。
+        res.push(`<div class="noti-line" lang="ko">${list[i][0]} ${list[i][1]}</div>` + (i != (list.length-1) ? "<hr>" : ""));
     }
 
     const displayClass = isOpen ? "" : "d-n";
